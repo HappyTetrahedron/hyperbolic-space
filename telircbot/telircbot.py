@@ -1,29 +1,18 @@
-# This is a small Telegram/IRC bot that listens to IRC channels and notifies the user on Telegram 
-# whenever his name is mentioned. It is also possible to chat in an IRC using Telegram, or to listen
-# to IRC channels. 
-# 
-# Every telegram message from the 'owner' that starts with a comma is interpreted as a command. The
-# following commands are available:
-# 
-# ,join [channel]       joins channel
-# ,part [channel]       leaves channel 
+#Copyright (C) 2015 Aline Abler
 #
-# ,listen               turns on listening mode (in listening mode, all irc messages are redirected to TG)
-# ,nolisten             turns off listening mode (only messages containing IRC_OWNER_NICKS are redirected)
+#This program is free software; you can redistribute it and/or
+#modify it under the terms of the GNU General Public License
+#as published by the Free Software Foundation; either version 2
+#of the License, or (at your option) any later version.
 #
-# ,channel [channel]    Sets the channel the bot is currently writing to to channel
-# ,[message]            Sends a message to the currently set channel
-# 
-# Make sure all constants are set to proper values.
-# Also, this bot logs your irc messages. Logs are stored in irclogs/, make sure that directory exists (or
-# turn off logging by commenting the corresponding lines in the source).
-# 
-# This bot requires PyTg by luckydonald. It can be found on github: 
-# https://github.com/luckydonald/pytg
-# Make sure PyTg and all its dependencies are installed. I recommend to run telegram-cli at least
-# once before using this script, and register a phone number. Otherwise, things might break.
+#This program is distributed in the hope that it will be useful,
+#but WITHOUT ANY WARRANTY; without even the implied warranty of
+#MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#GNU General Public License for more details.
 #
-# Author: Alinea
+#You should have received a copy of the GNU General Public License
+#along with this program; if not, write to the Free Software
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 import sys
 import socket
