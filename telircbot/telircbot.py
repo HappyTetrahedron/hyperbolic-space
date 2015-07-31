@@ -198,7 +198,7 @@ class IrssiListener(threading.Thread):
 
                 elif (item.find("QUIT") != -1 ):
                     nick = item.split('!', 1)[0]
-                    quitmsg = item[1:].split(':', 1)[2]
+                    quitmsg = item[1:].split(':', 1)[1]
                     self.logevent(sendchannel, nick+' has quit ('+quitmsg+')')
                     
 
