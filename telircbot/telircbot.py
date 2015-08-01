@@ -25,16 +25,16 @@ from time import strftime, gmtime
 
 IRC_HOST='irc.snoonet.org' 
 IRC_PORT=6667                       
-IRC_NICK='telircbot'                # The bot's nickname
-IRC_IDENT='telircbot'               # The bot's identity
-IRC_REALNAME='telircbot'            # The bot's 'real name'
-IRC_OWNER_NICKS=['MyNick', 'MyOtherNick']    # The bot's owner's IRC nick(s)
+IRC_NICK='telircbot'                   # The bot's nickname
+IRC_IDENT='telircbot'                  # The bot's identity
+IRC_REALNAME='telircbot'               # The bot's 'real name'
+IRC_OWNER_NICKS=['telircbot', 'mynick']    # The bot's owner's IRC nick(s) - I recommend to also put the bot's own nick.
 
 IRC_HOMECHANNEL='#linuxmasterrace'  # The bot's default channel it will autoconnect to
-IRC_NICKSERVPW='pazzw0rd'           # The bot's nickserv identification password. To disable identification, comment the corresponding lines in the source code.
+IRC_NICKSERVPW='pazzw0rd'             # The bot's nickserv identification password. To disable identification, uncomment the corresponding lines in the source code.
 
-TELEGRAM_OWNER="My_Name"            # The owner's telegram name, format Firstname_Lastname
-TELEGRAM_OWNER_PHONE="41710123456"  # The owner's telegram phone number, including country code, but without leading 00 or +
+TELEGRAM_OWNER="Firstname_Lastname"  # The owner's telegram username
+TELEGRAM_OWNER_PHONE="41012345678"  # The owner's telegram phone number, including country code, but without leading 00 or +
 TELEGRAM_DIR="/usr/bin/telegram-cli"    # The directory where telegram-cli is installed (this is default)
 TELEGRAM_PUBKEY="/etc/telegram-cli/server.pub" 
 
@@ -42,17 +42,43 @@ class IrssiListener(threading.Thread):
 
     # IRC server socket
     s = socket.socket()
-    listen = False
+    channels = []
+    listentochannels =[]
     listenlock = threading.Lock()
+    running = True
+
+    def stop(self):
+        self.running = False
+        print('Stopping listener...')
     
-    def setlisten(self, l):
+    def nolisten(self):
         self.listenlock.acquire()
-        self.listen = l
+        self.listentochannels = []
         self.listenlock.release()
 
-    def getlisten(self):
+    def alllisten(self):
         self.listenlock.acquire()
-        returnval = self.listen
+        self.listentochannels = list(self.channels)
+        self.listenlock.release()
+
+    def addlisten(self, channel):
+        channel = sanitize_channel(channel)
+
+        self.listenlock.acquire()
+        if not self.listentochannels.count(channel) > 0:
+            self.listentochannels.append(channel)
+        self.listenlock.release()
+
+    def removelisten(self, channel):
+        channel = sanitize_channel(channel)
+
+        self.listenlock.acquire()
+        self.listentochannels.remove(channel)
+        self.listenlock.release()
+
+    def is_listening_to(self, channel):
+        self.listenlock.acquire()
+        returnval = self.listentochannels.count(channel) > 0
         self.listenlock.release()
         return returnval
 
@@ -68,8 +94,9 @@ class IrssiListener(threading.Thread):
         # Log all of the everything
         self.log(sender[0], channel, msgpart)
 
-        if (self.nickIsMentioned(msgpart) or self.getlisten() ):
+        if (self.nickIsMentioned(msgpart+channel) or self.is_listening_to(channel)):
             send_message(channel+':\n<'+sender[0]+'> '+msgpart)
+
     # end parsemsg
 
 
@@ -84,6 +111,10 @@ class IrssiListener(threading.Thread):
     
     # Write message to specific channel's log
     def log(self, sender, channel, message):
+        if channel == IRC_NICK:
+            channel = sender
+        channel = channel.casefold()
+
         time = strftime("%y-%m-%d %H:%M", gmtime())
         entry = time+' < '+sender+' > '+message+'\n'
 
@@ -95,8 +126,9 @@ class IrssiListener(threading.Thread):
     def logevent(self, channel, message):
         time = strftime("%y-%m-%d %H:%M", gmtime())
         entry = "*** "+message  
+        channel = sanitize_channel(channel)
 
-        if self.getlisten():
+        if self.is_listening_to(channel):
             send_message(entry)
 
         entry = time+' '+entry+'\n'
@@ -106,37 +138,38 @@ class IrssiListener(threading.Thread):
     # end logevent
 
     def send_message(self, channel, message):
-        if channel[0] != '#':
-            channel = '#'+channel
+        channel = sanitize_channel(channel)
+        self.send_priv_message(channel, message)
 
+    def send_priv_message(self, channel, message):
         self.s.send(bytes('PRIVMSG '+channel+' :'+message+'\n', 'UTF-8'))
         self.log(IRC_NICK, channel, message)
+        send_message(channel+':\n<'+IRC_NICK+'> '+message)
     #end send_message
 
-    def join(self, channel):
-        if channel[0] != '#':
-            channel = '#'+channel
+    def join_channel(self, channel):
+        channel = sanitize_channel(channel)
 
         self.s.send(bytes('JOIN '+channel+'\n', 'UTF-8'))
         self.logevent(channel, 'joined channel '+channel)
-    # end join
+        
+        if not self.channels.count(channel) > 0:
+            self.channels.append(channel)
+
+    # end join_channel
         
     def part(self, channel):
-        if channel[0] != '#':
-            channel = '#'+channel
+        channel = sanitize_channel(channel)
 
         self.s.send(bytes('PART '+channel+'\n', 'UTF-8'))
         self.logevent(channel, 'left channel '+channel)
+
+        self.channels.remove(channel)
     # end part
 
+    def connect(self):
 
-
-    # connect and start listening
-    def run(self): 
-
-        # connecting to the server
-
-        self.s.connect((IRC_HOST, IRC_PORT))
+        self.s = socket.create_connection((IRC_HOST, IRC_PORT))
         print('connected')
 
         self.s.send(bytes('NICK '+IRC_NICK+'\n', 'UTF-8'))
@@ -144,13 +177,18 @@ class IrssiListener(threading.Thread):
 
         self.s.send(bytes('USER '+IRC_IDENT+' '+IRC_IDENT+' '+IRC_IDENT+' :'+IRC_REALNAME+'\n', 'UTF-8'))
         print('identified')
-    # end run
-
-
 
                     
+
+
+    # connect and start listening
+    def run(self): 
+
+        # connecting to the server
+        self.connect()
+
         # Listener main loop
-        while True:
+        while self.running:
             line=self.s.recv(500) # recieve server messages
             line = str(line, 'UTF-8')
 
@@ -164,8 +202,8 @@ class IrssiListener(threading.Thread):
                     print(item)
 
 
-                if item.find("Welcome to the Snoonet Chat Network") != -1 :
-                    self.join(IRC_HOMECHANNEL)
+                if item.find("Welcome") != -1 :
+                    self.join_channel(IRC_HOMECHANNEL)
                     print('JOIN SENT')
                     # Identify with NickServ
                     self.s.send(bytes('PRIVMSG NickServ :IDENTIFY '+IRC_NICKSERVPW+'\n', 'UTF-8'))
@@ -189,18 +227,25 @@ class IrssiListener(threading.Thread):
                     nick = item.split('!', 1)[0]
                     quitmsg = item[1:].split(':', 1)[1]
                     self.logevent(sendchannel, nick+' has quit ('+quitmsg+')')
-                    
 
                 # Return PINGs
-                splitline = item.split()
+                elif (item.find("PING") != -1 ):
+                    splitline = item.split()
     
-                if (splitline[0] == 'PING'):
                     self.s.send(bytes('PONG '+splitline[1]+'\n', 'UTF-8'))
                     print('sent pong')
 
         # end main loop
-
+        self.s.close()
+        print('Listener stopped.')
 #end IrssiListener
+
+def sanitize_channel(channel):
+    if channel[0] != '#':
+        channel = '#'+channel
+    return channel.split(' ')[0].strip()
+    
+
 
 def send_message(message):
     sender.send_msg(TELEGRAM_OWNER, message)   
@@ -230,6 +275,7 @@ def setchannel(channel):
 #end setchannel
 
 def parse_command(command):
+    global listener
     print('Parsing command '+command)
 
     splitcmd = command.split(' ', 1)
@@ -240,24 +286,57 @@ def parse_command(command):
     print('commandword: '+commandword)
     
     if commandword == 'listen':
-        listener.setlisten(True)
+        listener.alllisten()
+        send_message('Listening on')
 
     elif commandword == 'nolisten':
-        listener.setlisten(False)
+        listener.nolisten()
+        send_message('Listening off')
+
+    elif commandword == 'addlisten':
+        listener.addlisten(args)
+        send_message('Listening to channel '+args)
+
+    elif commandword == 'remlisten':
+        listener.removelisten(args)
+        send_message('No longer listening to channel '+args)
 
     elif commandword == 'part':
         listener.part(args)
 
     elif commandword == 'join':
-        listener.join(args)
+        listener.join_channel(args)
+    
+    elif commandword == 'msg':
+        args = args.split(' ', 1)
+        listener.send_priv_message(args[0], args[1])
 
     elif commandword == 'channel':
         print('channel command')
         setchannel(args)
+        send_message('Your current channel is '+channel)
+
+    elif commandword == 'reconnect':
+        listener.stop()
+        listener.join()
+        listener = IrssiListener()
+        listener.start()
+        send_message('Attempted reconnect')
+
+    elif commandword == 'ping':
+        print('Ping received on Telegram')
+        pong = 'I\'m still alive.\n'
+        if listener.is_alive():
+            pong = pong+'Listener seems to be as well'
+        else:
+            pong = pong+'Listener seems to be dead.'
+        send_message(pong)
+        
 
     # default: command is a message
     else:
         listener.send_message(sendchannel, command)
+        listener.addlisten(sendchannel)
 #end parse_command
     
 
@@ -267,6 +346,7 @@ def parse_command(command):
 
 @coroutine
 def main_loop():
+    global listener
     while True:
         msg = (yield)
 
